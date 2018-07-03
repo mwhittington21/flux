@@ -51,6 +51,7 @@ type Daemon struct {
 	JobStatusCache *job.StatusCache
 	EventWriter    event.EventWriter
 	Logger         log.Logger
+	NsWhitelist    map[string]bool
 	// bookkeeping
 	*LoopVars
 }

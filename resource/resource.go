@@ -12,6 +12,7 @@ type Resource interface {
 	Policy() policy.Set          // policy for this resource; e.g., whether it is locked, automated, ignored
 	Source() string              // where did this come from (informational)
 	Bytes() []byte               // the definition, for sending to cluster.Sync
+	Namespace() string           // the namespace of this resource, empty for non namespaced objects
 }
 
 type Container struct {

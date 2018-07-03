@@ -32,6 +32,7 @@ func TestSync(t *testing.T) {
 	// Start with nothing running. We should be told to apply all the things.
 	mockCluster := &cluster.Mock{}
 	manifests := &kubernetes.Manifests{}
+	nsWhitelist := map[string]bool{}
 	var clus cluster.Cluster = &syncCluster{mockCluster, map[string][]byte{}}
 
 	resources, err := manifests.LoadManifests(checkout.Dir(), checkout.ManifestDir())
@@ -39,7 +40,7 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Sync(manifests, resources, clus, true, log.NewNopLogger()); err != nil {
+	if err := Sync(manifests, resources, clus, true, log.NewNopLogger(), nsWhitelist); err != nil {
 		t.Fatal(err)
 	}
 	checkClusterMatchesFiles(t, manifests, clus, checkout.ManifestDir())
@@ -59,7 +60,7 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Sync(manifests, resources, clus, true, log.NewNopLogger()); err != nil {
+	if err := Sync(manifests, resources, clus, true, log.NewNopLogger(), nsWhitelist); err != nil {
 		t.Fatal(err)
 	}
 	checkClusterMatchesFiles(t, manifests, clus, checkout.ManifestDir())
@@ -67,20 +68,22 @@ func TestSync(t *testing.T) {
 
 func TestPrepareSyncDelete(t *testing.T) {
 	var tests = []struct {
-		msg      string
-		repoRes  map[string]resource.Resource
-		res      resource.Resource
-		expected *cluster.SyncDef
+		msg         string
+		repoRes     map[string]resource.Resource
+		res         resource.Resource
+		nsWhitelist map[string]bool
+		expected    *cluster.SyncDef
 	}{
 		{
-			msg:      "No repo resources provided during sync delete",
-			repoRes:  map[string]resource.Resource{},
-			res:      mockResourceWithIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{},
+			msg:         "No repo resources provided during sync delete",
+			repoRes:     map[string]resource.Resource{},
+			res:         mockResourceWithIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{},
 		},
 		{
-			msg: "No policy to ignore in place during sync delete",
-			repoRes: map[string]resource.Resource{
+			msg:        "No policy to ignore in place during sync delete",
+			repoRes:    map[string]resource.Resource{
 				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
 				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
 				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
@@ -88,12 +91,13 @@ func TestPrepareSyncDelete(t *testing.T) {
 				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
 				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
 			},
-			res:      mockResourceWithIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{},
+			res:         mockResourceWithIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{},
 		},
 		{
-			msg: "No policy to ignore during sync delete",
-			repoRes: map[string]resource.Resource{
+			msg:         "No policy to ignore during sync delete",
+			repoRes:     map[string]resource.Resource{
 				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
 				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
 				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
@@ -101,15 +105,44 @@ func TestPrepareSyncDelete(t *testing.T) {
 				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
 				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
 			},
-			res:      mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Delete: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Delete: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
+		},
+		{
+			msg:         "Namespace whitelist not on resource during sync delete",
+			repoRes:     map[string]resource.Resource{
+				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
+				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
+				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
+				"res4": mockResourceWithoutIgnorePolicy("deployment", "ns1", "d1"),
+				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
+				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
+			},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{"ns2": true},
+			expected:    &cluster.SyncDef{},
+		},
+		{
+			msg:         "Namespace whitelist on resource during sync delete",
+			repoRes:     map[string]resource.Resource{
+				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
+				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
+				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
+				"res4": mockResourceWithoutIgnorePolicy("deployment", "ns1", "d1"),
+				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
+				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
+			},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{"ns1": true},
+			expected:    &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Delete: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
 		},
 	}
 
 	logger := log.NewNopLogger()
 	for _, sc := range tests {
 		sync := &cluster.SyncDef{}
-		prepareSyncDelete(logger, sc.repoRes, sc.res.ResourceID().String(), sc.res, sync)
+		prepareSyncDelete(logger, sc.repoRes, sc.res.ResourceID().String(), sc.res, sync, sc.nsWhitelist)
 
 		if !reflect.DeepEqual(sc.expected, sync) {
 			t.Errorf("%s: expected %+v, got %+v\n", sc.msg, sc.expected, sync)
@@ -119,20 +152,22 @@ func TestPrepareSyncDelete(t *testing.T) {
 
 func TestPrepareSyncApply(t *testing.T) {
 	var tests = []struct {
-		msg      string
-		clusRes  map[string]resource.Resource
-		res      resource.Resource
-		expected *cluster.SyncDef
+		msg         string
+		clusRes     map[string]resource.Resource
+		res         resource.Resource
+		nsWhitelist map[string]bool
+		expected    *cluster.SyncDef
 	}{
 		{
-			msg:      "No repo resources provided during sync apply",
-			clusRes:  map[string]resource.Resource{},
-			res:      mockResourceWithIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{},
+			msg:         "No repo resources provided during sync apply",
+			clusRes:     map[string]resource.Resource{},
+			res:         mockResourceWithIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{},
 		},
 		{
-			msg: "No policy to ignore in place during sync apply",
-			clusRes: map[string]resource.Resource{
+			msg:        "No policy to ignore in place during sync apply",
+			clusRes:    map[string]resource.Resource{
 				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
 				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
 				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
@@ -140,12 +175,13 @@ func TestPrepareSyncApply(t *testing.T) {
 				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
 				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
 			},
-			res:      mockResourceWithIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{},
+			res:         mockResourceWithIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{},
 		},
 		{
-			msg: "No policy to ignore during sync apply",
-			clusRes: map[string]resource.Resource{
+			msg:        "No policy to ignore during sync apply",
+			clusRes:    map[string]resource.Resource{
 				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
 				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
 				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
@@ -153,15 +189,44 @@ func TestPrepareSyncApply(t *testing.T) {
 				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
 				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
 			},
-			res:      mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
-			expected: &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Apply: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{},
+			expected:    &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Apply: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
+		},
+		{
+			msg:        "Namespace whitelist not on resource during sync apply",
+			clusRes:    map[string]resource.Resource{
+				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
+				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
+				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
+				"res4": mockResourceWithoutIgnorePolicy("deployment", "ns1", "d1"),
+				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
+				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
+			},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{"ns2": true},
+			expected:    &cluster.SyncDef{},
+		},
+		{
+			msg:        "Namespace whitelist on resource during sync apply",
+			clusRes:    map[string]resource.Resource{
+				"res1": mockResourceWithoutIgnorePolicy("namespace", "ns1", "ns1"),
+				"res2": mockResourceWithoutIgnorePolicy("namespace", "ns2", "ns2"),
+				"res3": mockResourceWithoutIgnorePolicy("namespace", "ns3", "ns3"),
+				"res4": mockResourceWithoutIgnorePolicy("deployment", "ns1", "d1"),
+				"res5": mockResourceWithoutIgnorePolicy("deployment", "ns2", "d2"),
+				"res6": mockResourceWithoutIgnorePolicy("service", "ns3", "s1"),
+			},
+			res:         mockResourceWithoutIgnorePolicy("service", "ns1", "s2"),
+			nsWhitelist: map[string]bool{"ns1": true},
+			expected:    &cluster.SyncDef{Actions: []cluster.SyncAction{cluster.SyncAction{Apply: mockResourceWithoutIgnorePolicy("service", "ns1", "s2")}}},
 		},
 	}
 
 	logger := log.NewNopLogger()
 	for _, sc := range tests {
 		sync := &cluster.SyncDef{}
-		prepareSyncApply(logger, sc.clusRes, sc.res.ResourceID().String(), sc.res, sync)
+		prepareSyncApply(logger, sc.clusRes, sc.res.ResourceID().String(), sc.res, sync, sc.nsWhitelist)
 
 		if !reflect.DeepEqual(sc.expected, sync) {
 			t.Errorf("%s: expected %+v, got %+v\n", sc.msg, sc.expected, sync)

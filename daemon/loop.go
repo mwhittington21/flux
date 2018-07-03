@@ -195,7 +195,7 @@ func (d *Daemon) doSync(logger log.Logger) (retErr error) {
 
 	var syncErrors []event.ResourceError
 	// TODO supply deletes argument from somewhere (command-line?)
-	if err := fluxsync.Sync(d.Manifests, allResources, d.Cluster, false, logger); err != nil {
+	if err := fluxsync.Sync(d.Manifests, allResources, d.Cluster, false, logger, d.NsWhitelist); err != nil {
 		logger.Log("err", err)
 		switch syncerr := err.(type) {
 		case cluster.SyncError:

@@ -26,6 +26,14 @@ func (rs rsc) Bytes() []byte {
 	return []byte{}
 }
 
+func (rs rsc) Namespace() string {
+	ns := rs.Meta.Namespace
+	if ns == "" {
+		ns = "default"
+	}
+	return ns
+}
+
 func (rs rsc) ResourceID() flux.ResourceID {
 	return flux.MakeResourceID(rs.Meta.Namespace, rs.Kind, rs.Meta.Name)
 }
@@ -33,6 +41,10 @@ func (rs rsc) ResourceID() flux.ResourceID {
 func (rs rsc) Policy() policy.Set {
 	p := policy.Set{}
 	return p
+}
+
+func (ri rscIgnorePolicy) Namespace() string {
+	return ri.rsc.Namespace()
 }
 
 func (ri rscIgnorePolicy) Policy() policy.Set {

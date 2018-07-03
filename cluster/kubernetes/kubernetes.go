@@ -120,12 +120,7 @@ func NewCluster(clientset k8sclient.Interface,
 	applier Applier,
 	sshKeyRing ssh.KeyRing,
 	logger log.Logger,
-	nsWhitelist []string) *Cluster {
-
-	nsWhitelistMap := map[string]bool{}
-	for _, namespace := range nsWhitelist {
-		nsWhitelistMap[namespace] = true
-	}
+	nsWhitelist map[string]bool) *Cluster {
 
 	c := &Cluster{
 		client: extendedClient{
@@ -139,7 +134,7 @@ func NewCluster(clientset k8sclient.Interface,
 		applier:    applier,
 		logger:     logger,
 		sshKeyRing: sshKeyRing,
-		nsWhitelist: nsWhitelistMap,
+		nsWhitelist: nsWhitelist,
 	}
 
 	return c

@@ -29,12 +29,16 @@ type baseObject struct {
 	} `yaml:"metadata"`
 }
 
-func (o baseObject) ResourceID() flux.ResourceID {
+func (o baseObject) Namespace() string {
 	ns := o.Meta.Namespace
 	if ns == "" {
 		ns = "default"
 	}
-	return flux.MakeResourceID(ns, o.Kind, o.Meta.Name)
+	return ns
+}
+
+func (o baseObject) ResourceID() flux.ResourceID {
+	return flux.MakeResourceID(o.Namespace(), o.Kind, o.Meta.Name)
 }
 
 // It's useful for comparisons in tests to be able to remove the

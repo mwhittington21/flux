@@ -167,6 +167,16 @@ func main() {
 		*sshKeygenDir = *k8sSecretVolumeMountPath
 	}
 
+	if len(*k8sNamespaceWhitelist) > 0 {
+		logger.Log("whitelisted-namespaces", fmt.Sprintf("%v", *k8sNamespaceWhitelist))
+	}
+
+	// Turn the namespace whitelist StringSlice into a Map for easier processing around the place
+	nsWhitelistMap := map[string]bool{}
+	for _, namespace := range *k8sNamespaceWhitelist {
+		nsWhitelistMap[namespace] = true
+	}
+
 	// Cluster component.
 	var clusterVersion string
 	var sshKeyRing ssh.KeyRing
@@ -242,7 +252,7 @@ func main() {
 		logger.Log("kubectl", kubectl)
 
 		kubectlApplier := kubernetes.NewKubectl(kubectl, restClientConfig)
-		k8sInst := kubernetes.NewCluster(clientset, ifclientset, kubectlApplier, sshKeyRing, logger, *k8sNamespaceWhitelist)
+		k8sInst := kubernetes.NewCluster(clientset, ifclientset, kubectlApplier, sshKeyRing, logger, nsWhitelistMap)
 
 		if err := k8sInst.Ping(); err != nil {
 			logger.Log("ping", err)
@@ -395,6 +405,7 @@ func main() {
 			SyncInterval:         *syncInterval,
 			RegistryPollInterval: *registryPollInterval,
 		},
+		NsWhitelist:    nsWhitelistMap,
 	}
 
 	{

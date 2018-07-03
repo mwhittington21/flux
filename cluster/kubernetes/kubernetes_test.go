@@ -20,7 +20,7 @@ func newNamespace(name string) *apiv1.Namespace {
 	}
 }
 
-func testGetNamespaces(t *testing.T, namespace []string, expected []string) {
+func testGetNamespaces(t *testing.T, namespace map[string]bool, expected []string) {
 	clientset := fakekubernetes.NewSimpleClientset(newNamespace("default"),
 		newNamespace("kube-system"))
 
@@ -42,7 +42,7 @@ func testGetNamespaces(t *testing.T, namespace []string, expected []string) {
 }
 
 func TestGetNamespacesDefault(t *testing.T) {
-	testGetNamespaces(t, []string{}, []string{"default","kube-system",})
+	testGetNamespaces(t, map[string]bool{}, []string{"default","kube-system",})
 }
 
 func TestGetNamespacesNamespacesIsNil(t *testing.T) {
@@ -50,13 +50,24 @@ func TestGetNamespacesNamespacesIsNil(t *testing.T) {
 }
 
 func TestGetNamespacesNamespacesSet(t *testing.T) {
-	testGetNamespaces(t, []string{"default"}, []string{"default",})
+	nsWhitelist := map[string]bool{
+		"default": true,
+	}
+	testGetNamespaces(t, nsWhitelist, []string{"default",})
 }
 
 func TestGetNamespacesNamespacesSetDoesNotExist(t *testing.T) {
-	testGetNamespaces(t, []string{"hello"}, []string{})
+	nsWhitelist := map[string]bool{
+		"hello": true,
+	}
+	testGetNamespaces(t, nsWhitelist, []string{})
 }
 
 func TestGetNamespacesNamespacesMultiple(t *testing.T) {
-	testGetNamespaces(t, []string{"default","hello","kube-system"}, []string{"default","kube-system"})
+	nsWhitelist := map[string]bool{
+		"default": true,
+		"hello": true,
+		"kube-system": true,
+	}
+	testGetNamespaces(t, nsWhitelist, []string{"default","kube-system"})
 }

@@ -43,6 +43,10 @@ func (r rsc) Source() string {
 	return "test"
 }
 
+func (r rsc) Namespace() string {
+	return "default"
+}
+
 // ---
 
 func setup(t *testing.T) (*Cluster, *mockApplier) {

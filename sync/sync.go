@@ -10,7 +10,8 @@ import (
 )
 
 // Sync synchronises the cluster to the files in a directory
-func Sync(m cluster.Manifests, repoResources map[string]resource.Resource, clus cluster.Cluster, deletes bool, logger log.Logger) error {
+func Sync(m cluster.Manifests, repoResources map[string]resource.Resource, clus cluster.Cluster,
+	deletes bool, logger log.Logger, nsWhitelist map[string]bool) error {
 	// Get a map of resources defined in the cluster
 	clusterBytes, err := clus.Export()
 
@@ -34,23 +35,28 @@ func Sync(m cluster.Manifests, repoResources map[string]resource.Resource, clus 
 	// before this cleanup cluster feature can be unleashed on the world.
 	if deletes {
 		for id, res := range clusterResources {
-			prepareSyncDelete(logger, repoResources, id, res, &sync)
+			prepareSyncDelete(logger, repoResources, id, res, &sync, nsWhitelist)
 		}
 	}
 
 	for id, res := range repoResources {
-		prepareSyncApply(logger, clusterResources, id, res, &sync)
+		prepareSyncApply(logger, clusterResources, id, res, &sync, nsWhitelist)
 	}
 
 	return clus.Sync(sync)
 }
 
-func prepareSyncDelete(logger log.Logger, repoResources map[string]resource.Resource, id string, res resource.Resource, sync *cluster.SyncDef) {
+func prepareSyncDelete(logger log.Logger, repoResources map[string]resource.Resource, id string,
+	res resource.Resource, sync *cluster.SyncDef, nsWhitelist map[string]bool) {
 	if len(repoResources) == 0 {
 		return
 	}
 	if res.Policy().Contains(policy.Ignore) {
 		logger.Log("resource", res.ResourceID(), "ignore", "delete")
+		return
+	}
+	if len(nsWhitelist) > 0 && ! nsWhitelist[res.Namespace()] {
+		logger.Log("resource", res.ResourceID(), "ignore", "delete", "reason", "namespace", "namespace", res.Namespace())
 		return
 	}
 	if _, ok := repoResources[id]; !ok {
@@ -60,9 +66,14 @@ func prepareSyncDelete(logger log.Logger, repoResources map[string]resource.Reso
 	}
 }
 
-func prepareSyncApply(logger log.Logger, clusterResources map[string]resource.Resource, id string, res resource.Resource, sync *cluster.SyncDef) {
+func prepareSyncApply(logger log.Logger, clusterResources map[string]resource.Resource, id string,
+	res resource.Resource, sync *cluster.SyncDef, nsWhitelist map[string]bool) {
 	if res.Policy().Contains(policy.Ignore) {
 		logger.Log("resource", res.ResourceID(), "ignore", "apply")
+		return
+	}
+	if len(nsWhitelist) > 0 && ! nsWhitelist[res.Namespace()] {
+		logger.Log("resource", res.ResourceID(), "ignore", "apply", "reason", "namespace", "namespace", res.Namespace())
 		return
 	}
 	if cres, ok := clusterResources[id]; ok {
